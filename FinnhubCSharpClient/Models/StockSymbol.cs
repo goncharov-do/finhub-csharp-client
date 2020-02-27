@@ -1,4 +1,4 @@
-﻿namespace FinnhubCSharpClient
+﻿namespace FinnhubCSharpClient.Models
 {
     public struct StockSymbol
     {

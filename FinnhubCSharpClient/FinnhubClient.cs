@@ -1,22 +1,24 @@
-﻿using System;
+﻿using FinnhubCSharpClient.Models;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 
 namespace FinnhubCSharpClient
 {
-    public static class FinnhubClient
+    public class FinnhubClient
     {
-        private static HttpClient client = new HttpClient();
+        private readonly HttpClient client = new HttpClient();
+        private readonly string token;
 
-        static FinnhubClient()
+        public FinnhubClient(FinnhubConfiguration configuration)
         {
-            client.BaseAddress = new Uri("https://finnhub.io/api/v1/");
+            client.BaseAddress = configuration.BaseAddress;
+            token = configuration.Token;
         }
 
-        public static async Task<IEnumerable<StockSymbol>> StockSymbolsAsync(string exchange)
+        public async Task<IEnumerable<StockSymbol>> StockSymbolsAsync(string exchange)
         {
-            var response = await client.GetAsync($"stock/symbol?exchange={exchange}&token=bpbsv8vrh5r9k08nbdag");
+            var response = await client.GetAsync($"stock/symbol?exchange={exchange}&token={token}");
             return await response.Content.ReadAsAsync<IEnumerable<StockSymbol>>();
         }
     }

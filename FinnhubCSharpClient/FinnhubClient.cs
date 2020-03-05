@@ -1,4 +1,5 @@
 ﻿using FinnhubCSharpClient.Models;
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -10,10 +11,10 @@ namespace FinnhubCSharpClient
         private readonly HttpClient client = new HttpClient();
         private readonly string token;
 
-        public FinnhubClient(FinnhubConfiguration configuration)
+        public FinnhubClient(Uri baseAddress, string token)
         {
-            client.BaseAddress = configuration.BaseAddress;
-            token = configuration.Token;
+            client.BaseAddress = baseAddress;
+            this.token = token;
         }
 
         public async Task<IEnumerable<StockSymbol>> StockSymbolsAsync(string exchange)

@@ -1,8 +1,11 @@
 ﻿using FinnhubCSharpClient.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 
 namespace FinnhubCSharpClient
@@ -21,28 +24,55 @@ namespace FinnhubCSharpClient
             return await _client.GetAsync($"{request}&token={token}");
         }
 
-        public async Task<IEnumerable<StockSymbol>> StockSymbolsAsync(string exchange, string token)
+        private static (int, DateTimeOffset) ParseHeaders(HttpResponseHeaders headers) {
+            var remaining = int.Parse(headers.GetValues("X-Ratelimit-Remaining").FirstOrDefault()!);
+            var secondsLimit = int.Parse(headers.GetValues("X-Ratelimit-Reset").FirstOrDefault()!);
+            return (
+                remaining,
+                DateTimeOffset.FromUnixTimeSeconds(secondsLimit)
+            );
+        }
+
+        private static async Task<T> ReadIfOk<T>(HttpResponseMessage response) {
+            return response.StatusCode == HttpStatusCode.OK
+                ? await response.Content.ReadAsAsync<T>()
+                : default;
+        }
+
+        public async Task<FinnhubResponse<IEnumerable<StockSymbol>>> StockSymbolsAsync(string exchange, string token)
         {
             var response = await Get($"stock/symbol?exchange={exchange}", token);
-            if (response.StatusCode != HttpStatusCode.OK)
-                throw new Exception();
-            return await response.Content.ReadAsAsync<IEnumerable<StockSymbol>>();
+            var symbols = await ReadIfOk<IEnumerable<StockSymbol>>(response);
+            var (remaining, limitReset) = ParseHeaders(response.Headers);
+            return new FinnhubResponse<IEnumerable<StockSymbol>> {
+                Data = symbols,
+                RemainingRequests = remaining,
+                LimitResetTime = limitReset
+            };
         }
 
-        public async Task<IEnumerable<News>> NewsAsync(string stock, DateTime from, DateTime to, string token)
+        public async Task<FinnhubResponse<IEnumerable<News>>> NewsAsync(string stock, DateTime from, DateTime to, string token)
         {
             var response = await Get($"company-news?symbol={stock}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", token);
-            if (response.StatusCode != HttpStatusCode.OK)
-                throw new Exception();
-            return await response.Content.ReadAsAsync<IEnumerable<News>>();
+            var news = await ReadIfOk<IEnumerable<News>>(response);
+            var (remaining, limitReset) = ParseHeaders(response.Headers);
+            return new FinnhubResponse<IEnumerable<News>> {
+                Data = news,
+                RemainingRequests = remaining,
+                LimitResetTime = limitReset
+            };
         }
 
-        public async Task<PatternResponse> PatternsAsync(string stock, string resolution, string token)
+        public async Task<FinnhubResponse<PatternResponse>> PatternsAsync(string stock, string resolution, string token)
         {
             var response = await Get($"scan/pattern?symbol={stock}&resolution={resolution}", token);
-            if (response.StatusCode != HttpStatusCode.OK)
-                throw new Exception();
-            return await response.Content.ReadAsAsync<PatternResponse>();
+            var patterns = await ReadIfOk<PatternResponse>(response);
+            var (remaining, limitReset) = ParseHeaders(response.Headers);
+            return new FinnhubResponse<PatternResponse> {
+                Data = patterns,
+                RemainingRequests = remaining,
+                LimitResetTime = limitReset
+            };
         }
     }
 }

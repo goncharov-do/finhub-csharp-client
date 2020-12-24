@@ -1,7 +1,6 @@
 ﻿using FinnhubCSharpClient.Models;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -39,9 +38,26 @@ namespace FinnhubCSharpClient
                 : default;
         }
 
+        private static bool IsSuccess<T>(HttpResponseMessage response, out FinnhubResponse<T> result) {
+            switch (response.StatusCode) {
+                case HttpStatusCode.OK:
+                    result = null;
+                    return true;
+                case HttpStatusCode.Unauthorized:
+                    result = FinnhubResponse<T>.InvalidApiKey;
+                    return false;
+                default:
+                    result = FinnhubResponse<T>.Default;
+                    return false;
+            }
+        }
+
         public async Task<FinnhubResponse<IEnumerable<StockSymbol>>> StockSymbolsAsync(string exchange, string token)
         {
             var response = await Get($"stock/symbol?exchange={exchange}", token);
+            if (!IsSuccess<IEnumerable<StockSymbol>>(response, out var result)) {
+                return result;
+            }
             var symbols = await ReadIfOk<IEnumerable<StockSymbol>>(response);
             var (remaining, limitReset) = ParseHeaders(response.Headers);
             return new FinnhubResponse<IEnumerable<StockSymbol>> {
@@ -54,6 +70,9 @@ namespace FinnhubCSharpClient
         public async Task<FinnhubResponse<IEnumerable<News>>> NewsAsync(string stock, DateTime from, DateTime to, string token)
         {
             var response = await Get($"company-news?symbol={stock}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", token);
+            if (!IsSuccess<IEnumerable<News>>(response, out var result)) {
+                return result;
+            }
             var news = await ReadIfOk<IEnumerable<News>>(response);
             var (remaining, limitReset) = ParseHeaders(response.Headers);
             return new FinnhubResponse<IEnumerable<News>> {
@@ -66,6 +85,9 @@ namespace FinnhubCSharpClient
         public async Task<FinnhubResponse<PatternResponse>> PatternsAsync(string stock, string resolution, string token)
         {
             var response = await Get($"scan/pattern?symbol={stock}&resolution={resolution}", token);
+            if (!IsSuccess<PatternResponse>(response, out var result)) {
+                return result;
+            }
             var patterns = await ReadIfOk<PatternResponse>(response);
             var (remaining, limitReset) = ParseHeaders(response.Headers);
             return new FinnhubResponse<PatternResponse> {

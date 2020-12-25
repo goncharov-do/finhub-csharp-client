@@ -96,5 +96,20 @@ namespace FinnhubCSharpClient
                 LimitResetTime = limitReset
             };
         }
+
+        public async Task<FinnhubResponse<CompanyInfo>> CompanyInfoAsync(string stock, string token) {
+            var response = await Get($"stock/profile2?symbol={stock}", token);
+            if (!IsSuccess<CompanyInfo>(response, out var result)) {
+                return result;
+            }
+
+            var info = await ReadIfOk<CompanyInfo>(response);
+            var (remaining, limitReset) = ParseHeaders(response.Headers);
+            return new FinnhubResponse<CompanyInfo> {
+                Data = info,
+                RemainingRequests = remaining,
+                LimitResetTime = limitReset
+            };
+        }
     }
 }

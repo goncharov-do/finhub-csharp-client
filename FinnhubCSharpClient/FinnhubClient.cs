@@ -1,7 +1,6 @@
 ﻿using FinnhubCSharpClient.Models;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -13,18 +12,30 @@ namespace FinnhubCSharpClient
     public class FinnhubClient
     {
         private readonly HttpClient _client = new HttpClient();
+        private readonly ITokenPool _tokenPool;
 
-        public FinnhubClient(Uri baseAddress)
-        {
+        public FinnhubClient(Uri baseAddress, ITokenPool tokenPool) {
+            _tokenPool = tokenPool;
             _client.BaseAddress = baseAddress;
         }
 
-        private async Task<HttpResponseMessage> Get(string request, string token)
-        {
-            return await _client.GetAsync($"{request}&token={token}");
+        private async Task<T> Get<T>(string request) {
+            var token = _tokenPool.GetToken();
+            var response = await _client.GetAsync($"{request}&token={token}");
+            if (response.StatusCode == HttpStatusCode.Unauthorized) {
+                _tokenPool.ReleaseInvalidToken(token);
+                return default;
+            }
+            var (remaining, secondsLimit) = ParseHeaders(response.Headers);
+            _tokenPool.ReleaseToken(token, secondsLimit, remaining);
+            if (response.StatusCode == HttpStatusCode.OK) {
+                return await response.Content.ReadAsAsync<T>();
+            }
+
+            return default;
         }
 
-        private static (int, DateTimeOffset) ParseHeaders(HttpResponseHeaders headers) {
+        private static (int, DateTimeOffset) ParseHeaders(HttpHeaders headers) {
             var remaining = int.Parse(headers.GetValues("X-Ratelimit-Remaining").FirstOrDefault()!);
             var secondsLimit = int.Parse(headers.GetValues("X-Ratelimit-Reset").FirstOrDefault()!);
             return (
@@ -33,46 +44,20 @@ namespace FinnhubCSharpClient
             );
         }
 
-        private static async Task<T> ReadIfOk<T>(HttpResponseMessage response) {
-            return response.StatusCode == HttpStatusCode.OK
-                ? await response.Content.ReadAsAsync<T>()
-                : default;
+        public async Task<IEnumerable<StockSymbol>> StockSymbolsAsync(string exchange) {
+            return await Get<IEnumerable<StockSymbol>>($"stock/symbol?exchange={exchange}");
         }
 
-        public async Task<FinnhubResponse<IEnumerable<StockSymbol>>> StockSymbolsAsync(string exchange, string token)
-        {
-            var response = await Get($"stock/symbol?exchange={exchange}", token);
-            var symbols = await ReadIfOk<IEnumerable<StockSymbol>>(response);
-            var (remaining, limitReset) = ParseHeaders(response.Headers);
-            return new FinnhubResponse<IEnumerable<StockSymbol>> {
-                Data = symbols,
-                RemainingRequests = remaining,
-                LimitResetTime = limitReset
-            };
+        public async Task<IEnumerable<News>> NewsAsync(string stock, DateTime from, DateTime to) {
+            return await Get<IEnumerable<News>>($"company-news?symbol={stock}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
         }
 
-        public async Task<FinnhubResponse<IEnumerable<News>>> NewsAsync(string stock, DateTime from, DateTime to, string token)
-        {
-            var response = await Get($"company-news?symbol={stock}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}", token);
-            var news = await ReadIfOk<IEnumerable<News>>(response);
-            var (remaining, limitReset) = ParseHeaders(response.Headers);
-            return new FinnhubResponse<IEnumerable<News>> {
-                Data = news,
-                RemainingRequests = remaining,
-                LimitResetTime = limitReset
-            };
+        public async Task<PatternResponse> PatternsAsync(string stock, string resolution) {
+            return await Get<PatternResponse>($"scan/pattern?symbol={stock}&resolution={resolution}");
         }
 
-        public async Task<FinnhubResponse<PatternResponse>> PatternsAsync(string stock, string resolution, string token)
-        {
-            var response = await Get($"scan/pattern?symbol={stock}&resolution={resolution}", token);
-            var patterns = await ReadIfOk<PatternResponse>(response);
-            var (remaining, limitReset) = ParseHeaders(response.Headers);
-            return new FinnhubResponse<PatternResponse> {
-                Data = patterns,
-                RemainingRequests = remaining,
-                LimitResetTime = limitReset
-            };
+        public async Task<CompanyInfo> CompanyInfoAsync(string stock) {
+            return await Get<CompanyInfo>($"stock/profile2?symbol={stock}");
         }
     }
 }

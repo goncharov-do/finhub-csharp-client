@@ -44,6 +44,11 @@ namespace FinnhubCSharpClient
             );
         }
 
+        public async Task<bool> TestToken(string token) {
+            var response = await _client.GetAsync($"quote?Symbol=AAPL&token={token}");
+            return response.StatusCode != HttpStatusCode.Unauthorized;
+        }
+
         public async Task<IEnumerable<StockSymbol>> StockSymbolsAsync(string exchange) {
             return await Get<IEnumerable<StockSymbol>>($"stock/symbol?exchange={exchange}");
         }

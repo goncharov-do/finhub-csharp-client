@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace FinnhubCSharpClient
 {
@@ -13,9 +14,11 @@ namespace FinnhubCSharpClient
     {
         private readonly HttpClient _client = new HttpClient();
         private readonly ITokenPool _tokenPool;
+        private readonly ILogger<FinnhubClient> _logger;
 
-        public FinnhubClient(Uri baseAddress, ITokenPool tokenPool) {
+        public FinnhubClient(Uri baseAddress, ITokenPool tokenPool, ILogger<FinnhubClient> logger = null) {
             _tokenPool = tokenPool;
+            _logger = logger;
             _client.BaseAddress = baseAddress;
         }
 
@@ -35,9 +38,30 @@ namespace FinnhubCSharpClient
             return default;
         }
 
-        private static (int, DateTimeOffset) ParseHeaders(HttpHeaders headers) {
-            var remaining = int.Parse(headers.GetValues("X-Ratelimit-Remaining").FirstOrDefault()!);
-            var secondsLimit = int.Parse(headers.GetValues("X-Ratelimit-Reset").FirstOrDefault()!);
+        private (int, DateTimeOffset) ParseHeaders(HttpHeaders headers) {
+            var remaining = 0;
+            var secondsLimit = DateTimeOffset.UtcNow.AddMinutes(1).ToUnixTimeSeconds();
+            var error = false;
+            if (!headers.TryGetValues("X-Ratelimit-Remaining", out var remainingHeader)) {
+                _logger?.LogError("Cannot find 'X-Ratelimit-Remaining' header");
+                error = true;
+            }
+            else {
+                remaining = int.Parse(remainingHeader.FirstOrDefault()!);
+            }
+            
+            if (!headers.TryGetValues("X-Ratelimit-Reset", out var resetHeader)) {
+                _logger?.LogError("Cannot find 'X-Ratelimit-Reset' header");
+                error = true;
+            }
+            else {
+                secondsLimit = int.Parse(resetHeader.FirstOrDefault()!);
+            }
+
+            if (error) {
+                _logger?.LogError($"Headers: {string.Join(", ", headers.Select(h => h.Key))}");
+            }
+            
             return (
                 remaining,
                 DateTimeOffset.FromUnixTimeSeconds(secondsLimit)
